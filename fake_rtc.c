@@ -1,6 +1,7 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/ktime.h>
+#include <linux/random.h>
 #include <linux/rtc.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -30,11 +31,14 @@ static struct fake_rtc_info {
 static ktime_t synchronized_real_time;
 static ktime_t synchronized_boot_time;
 
-static void synchronize_boot_time() {
+static void synchronize_boot_time(void);
+static void synchronize_real_time(void);
+
+static void synchronize_boot_time(void) {
     synchronized_boot_time = ktime_get();
 }
 
-static void synchronize_real_time() {
+static void synchronize_real_time(void) {
     synchronized_real_time = ktime_get_real();
 }
 
@@ -46,7 +50,7 @@ static void synchronize_real_time() {
  */
 static ktime_t get_accelerated_time(unsigned long milliseconds_difference) {
     return (ktime_t) {
-        .tv64 = synchronized_real_time.tv64 + milliseconds_difference * ACCELERATING_COEFFICIENT / 1000
+        synchronized_real_time + milliseconds_difference * ACCELERATING_COEFFICIENT / 1000
     };
 }
 
@@ -58,7 +62,7 @@ static ktime_t get_accelerated_time(unsigned long milliseconds_difference) {
  */
 static ktime_t get_slowed_time(unsigned long milliseconds_difference) {
     return (ktime_t) {
-        .tv64 = synchronized_real_time.tv64 + milliseconds_difference / SLOWING_COEFFICIENT / 1000
+        synchronized_real_time + milliseconds_difference / SLOWING_COEFFICIENT / 1000
     };
 }
 
@@ -73,7 +77,7 @@ static ktime_t get_randomized_time(unsigned long milliseconds_difference) {
     get_random_bytes(&random_byte, 1);
     int8_t coefficient = random_byte % 10; 
     return (ktime_t) {
-            .tv64 = synchronized_real_time.tv64 + milliseconds_difference * coefficient / 1000
+            synchronized_real_time + milliseconds_difference * coefficient / 1000
         };
 }
 
@@ -90,7 +94,7 @@ static const struct rtc_class_ops fake_rtc_operations = {
     .set_time = fake_rtc_set_time
 };
 
-void fake_rtc_cleanup() {
+void fake_rtc_cleanup(void) {
 
 }
 
@@ -108,6 +112,8 @@ int fake_rtc_init(void) {
 	}
     synchronize_boot_time();
     synchronize_real_time();
+    printk(KERN_ALERT "pizdec\n");
+    return 0;
 }
 
 module_init(fake_rtc_init);
