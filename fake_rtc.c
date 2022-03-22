@@ -45,39 +45,39 @@ static void synchronize_real_time(void) {
 /**
  * @brief Get the accelerated time
  *  
- * @param milliseconds_difference - milliseconds from last synchronization
+ * @param nanoseconds_difference - nanoseconds from last synchronization
  * @return ktime_t - time from January 1st 1970 in accelerated mode 
  */
-static ktime_t get_accelerated_time(unsigned long milliseconds_difference) {
+static ktime_t get_accelerated_time(unsigned long nanoseconds_difference) {
     return (ktime_t) {
-        synchronized_real_time + milliseconds_difference * ACCELERATING_COEFFICIENT / 1000
+        synchronized_real_time + nanoseconds_difference * ACCELERATING_COEFFICIENT
     };
 }
 
 /**
  * @brief Get the slowed time
  * 
- * @param milliseconds_difference - milliseconds from last synchronization
+ * @param nanoseconds_difference - nanoseconds from last synchronization
  * @return time_t - time from January 1st 1970 in slowed mode 
  */
-static ktime_t get_slowed_time(unsigned long milliseconds_difference) {
+static ktime_t get_slowed_time(unsigned long nanoseconds_difference) {
     return (ktime_t) {
-        synchronized_real_time + milliseconds_difference / SLOWING_COEFFICIENT / 1000
+        synchronized_real_time + nanoseconds_difference / SLOWING_COEFFICIENT
     };
 }
 
 /**
  * @brief Get the randomized time 
  * 
- * @param milliseconds_difference - milliseconds from last synchronization
+ * @param nanoseconds_difference - nanoseconds from last synchronization
  * @return time_t - time from January 1st 1970 in random mode 
  */
-static ktime_t get_randomized_time(unsigned long milliseconds_difference) {
+static ktime_t get_randomized_time(unsigned long nanoseconds_difference) {
     int8_t random_byte;
     get_random_bytes(&random_byte, 1);
     int8_t coefficient = random_byte % 10; 
     return (ktime_t) {
-            synchronized_real_time + milliseconds_difference * coefficient / 1000
+            synchronized_real_time + nanoseconds_difference * coefficient
         };
 }
 
@@ -95,7 +95,7 @@ static const struct rtc_class_ops fake_rtc_operations = {
 };
 
 void fake_rtc_cleanup(void) {
-
+    printk(KERN_ALERT "Boot time: %llsd\n", synchronized_boot_time);
 }
 
 int fake_rtc_init(void) {
@@ -112,7 +112,7 @@ int fake_rtc_init(void) {
 	}
     synchronize_boot_time();
     synchronize_real_time();
-    printk(KERN_ALERT "pizdec\n");
+    printk(KERN_ALERT "Absolute time: %lld\n", synchronized_real_time);
     return 0;
 }
 
