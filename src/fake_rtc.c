@@ -85,7 +85,7 @@ static ktime_t get_real_time(unsigned long ignored) {
     return ktime_get_real();
 }
 
-static (*ktime_t)(unsigned long) fake_rtc_accessors[4] = {
+static ktime_t (*fake_rtc_accessors[])(unsigned long) = {
     [REAL] = get_real_time,
     [RANDOM] = get_randomized_time,
     [ACCELERATED] = get_accelerated_time,
@@ -96,11 +96,13 @@ static int fake_rtc_read_time(struct device * dev, struct rtc_time * tm) {
     unsigned long nanosec_from_sync = ktime_get() - synchronized_boot_time;
     ktime_t my_time = fake_rtc_accessors[mode](nanosec_from_sync);
     rtc_time64_to_tm(my_time, tm);
+    return 0;
 }
 
 static int fake_rtc_set_time(struct device * dev, struct rtc_time * tm) {
-    synchronized_real_time = rtc_tm_to_ktime(*tm));
+    synchronized_real_time = rtc_tm_to_ktime(*tm);
     synchronize_boot_time();
+    return 0;
 }
 
 static const struct rtc_class_ops fake_rtc_operations = {

@@ -1,6 +1,20 @@
-obj-m += fake_rtc.o
+SRCDIR = src
+BUILDDIR = build
 
-all:
+obj-m += $(BUILDDIR)/fake_rtc.o
+
+all: $(SRCDIR) $(BUILDDIR)
+	cp $(SRCDIR)/*.c $(BUILDDIR)
+	cd $(BUILDDIR)
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+	cd ..
+	cp $(BUILDDIR)/fake_rtc.ko fake_rtc.ko
+
 clean:
-	`make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+	rm -r $(BUILDDIR)
+
+$(BUILDDIR):
+	mkdir $(BUILDDIR)
+
+$(SRCDIR):
+	$(error Can not find sources dir)
