@@ -118,14 +118,14 @@ int fake_rtc_init(void) {
     dev_t device = 0;
     int result;
     if (PREFERABLE_MAJOR) {
-		device = MKDEV(PREFERABLE_MAJOR, minor);
-	} else {
-		major = MAJOR(device);
-	}
-	if (result < 0) {
-		printk(KERN_WARNING "Fake rtc: can't get major %d\n", major);
-		return result;
-	}
+        device = MKDEV(PREFERABLE_MAJOR, minor);
+    } else {
+        major = MAJOR(device);
+    }
+    if (result < 0) {
+        printk(KERN_WARNING "Fake rtc: can't get major %d\n", major);
+        return result;
+    }
     synchronize_boot_time();
     synchronize_real_time();
     printk(KERN_ALERT "Absolute time: %lld\n", synchronized_real_time);
