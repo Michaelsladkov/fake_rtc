@@ -5,6 +5,8 @@
 #include <linux/rtc.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#include <linux/platform_device.h>
+#include <linux/slab.h>
 
 #define DEVICE_NAME "FakeRTC"
 #define ACCELERATING_COEFFICIENT 2
@@ -27,7 +29,7 @@ static int device_open = 0;
 
 static struct fake_rtc_info {
     struct rtc_device *rtc_dev;
-	struct device *dev;
+	struct platform_device *pdev;
 } fake_rtc;
 
 static ktime_t synchronized_real_time;
@@ -137,6 +139,7 @@ static struct file_operations fops = {
 };
 
 int fake_rtc_init(void) {
+    printk(KERN_CRIT "We are initing, huys\n");
     dev_t device = 0;
     int result;
 
@@ -145,15 +148,18 @@ int fake_rtc_init(void) {
         printk(KERN_WARNING "Fake rtc: can't get major %d\n", major);
         return major;
     }
-    
-    fake_rtc.rtc_dev->ops = &fake_rtc_operations;
-    //fake_rtc.rtc_dev->dev = *(fake_rtc.dev);
-
-    //synchronize_boot_time();
-    //synchronize_real_time();
     printk(KERN_ALERT "FakeRTC major: %d\n", major);
-    //return __rtc_register_device(THIS_MODULE, fake_rtc.rtc_dev);
-    return 0;
+    fake_rtc.pdev = platform_device_alloc(DEVICE_NAME, 2);
+    printk(KERN_CRIT "We have allocated pdev\n");
+    fake_rtc.rtc_dev = devm_rtc_allocate_device(&(fake_rtc.pdev->dev));
+    printk(KERN_CRIT "We have allocated rtc\n");
+    fake_rtc.rtc_dev->ops = &fake_rtc_operations;
+    fake_rtc.rtc_dev->dev = fake_rtc.pdev->dev;
+
+    synchronize_boot_time();
+    synchronize_real_time();
+    
+    return __rtc_register_device(THIS_MODULE, fake_rtc.rtc_dev);
 }
 
 module_init(fake_rtc_init);
