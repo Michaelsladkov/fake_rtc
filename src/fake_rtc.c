@@ -23,10 +23,12 @@ int major = PREFERABLE_MAJOR;
 int minor = 1;
 module_param(minor, int, S_IRUGO);
 
+static int device_open = 0;
+
 static struct fake_rtc_info {
     struct rtc_device *rtc_dev;
 	struct device *dev;
-} this_device;
+} fake_rtc;
 
 static ktime_t synchronized_real_time;
 static ktime_t synchronized_boot_time;
@@ -114,21 +116,43 @@ void fake_rtc_cleanup(void) {
     printk(KERN_ALERT "Boot time: %lls\n", synchronized_boot_time);
 }
 
+static int fake_rtc_open(struct inode * inode, struct file * file) {
+    if (device_open) {
+        return EBUSY;
+    }
+    device_open++;
+    try_module_get(THIS_MODULE);
+    return 0;
+}
+
+static int fake_rtc_release(struct inode * inode, struct file * file) {
+    device_open--;
+    module_put(THIS_MODULE);
+    return 0;
+}
+
+static struct file_operations fops = {
+    .open = fake_rtc_open,
+    .release = fake_rtc_release
+};
+
 int fake_rtc_init(void) {
     dev_t device = 0;
     int result;
-    if (PREFERABLE_MAJOR) {
-        device = MKDEV(PREFERABLE_MAJOR, minor);
-    } else {
-        major = MAJOR(device);
-    }
-    if (result < 0) {
+
+    major = register_chrdev(PREFERABLE_MAJOR, DEVICE_NAME, &fops);
+    if (major < 0) {
         printk(KERN_WARNING "Fake rtc: can't get major %d\n", major);
-        return result;
+        return major;
     }
-    synchronize_boot_time();
-    synchronize_real_time();
-    printk(KERN_ALERT "Absolute time: %lld\n", synchronized_real_time);
+    
+    fake_rtc.rtc_dev->ops = &fake_rtc_operations;
+    //fake_rtc.rtc_dev->dev = *(fake_rtc.dev);
+
+    //synchronize_boot_time();
+    //synchronize_real_time();
+    printk(KERN_ALERT "FakeRTC major: %d\n", major);
+    //return __rtc_register_device(THIS_MODULE, fake_rtc.rtc_dev);
     return 0;
 }
 
