@@ -143,24 +143,24 @@ int fake_rtc_init(void) {
     dev_t device = 0;
     int result;
 
-    major = register_chrdev(PREFERABLE_MAJOR, DEVICE_NAME, &fops);
-    if (major < 0) {
-        printk(KERN_WARNING "Fake rtc: can't get major %d\n", major);
-        return major;
-    }
-    printk(KERN_ALERT "FakeRTC major: %d\n", major);
+    // major = register_chrdev(PREFERABLE_MAJOR, DEVICE_NAME, &fops);
+    // if (major < 0) {
+        // printk(KERN_WARNING "Fake rtc: can't get major %d\n", major);
+        // return major;
+    // }
+    // printk(KERN_ALERT "FakeRTC major: %d\n", major);
     fake_rtc.pdev = platform_device_alloc(DEVICE_NAME, 2);
     printk(KERN_CRIT "We have allocated pdev\n");
-    fake_rtc.rtc_dev = devm_rtc_allocate_device(&(fake_rtc.pdev->dev));
+    fake_rtc.rtc_dev = devm_rtc_device_register(&(fake_rtc.pdev->dev), "RTCmegaDevice", &fake_rtc_operations, THIS_MODULE);
     printk(KERN_CRIT "We have allocated rtc\n");
-    fake_rtc.rtc_dev->ops = &fake_rtc_operations;
-    fake_rtc.rtc_dev->dev = fake_rtc.pdev->dev;
+    //fake_rtc.rtc_dev->ops = &fake_rtc_operations;
+    //fake_rtc.rtc_dev->dev = fake_rtc.pdev->dev;
 
     synchronize_boot_time();
     synchronize_real_time();
     
-    result = __rtc_register_device(THIS_MODULE, fake_rtc.rtc_dev);
-    printk(KERN_CRIT "Allocation result: %d\n", result);
+    //result = __rtc_register_device(THIS_MODULE, fake_rtc.rtc_dev);
+    //printk(KERN_CRIT "Allocation result: %d\n", result);
     return result;
 }
 
