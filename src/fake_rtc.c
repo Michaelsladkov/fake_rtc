@@ -115,7 +115,7 @@ static const struct rtc_class_ops fake_rtc_operations = {
 };
 
 void fake_rtc_cleanup(void) {
-    printk(KERN_ALERT "Boot time: %lls\n", synchronized_boot_time);
+    platform_device_del(fake_rtc.pdev);
 }
 
 static int fake_rtc_open(struct inode * inode, struct file * file) {
@@ -159,7 +159,9 @@ int fake_rtc_init(void) {
     synchronize_boot_time();
     synchronize_real_time();
     
-    return __rtc_register_device(THIS_MODULE, fake_rtc.rtc_dev);
+    result = __rtc_register_device(THIS_MODULE, fake_rtc.rtc_dev);
+    printk(KERN_CRIT "Allocation result: %d\n", result);
+    return result;
 }
 
 module_init(fake_rtc_init);
