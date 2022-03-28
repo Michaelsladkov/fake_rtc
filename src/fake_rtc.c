@@ -4,16 +4,13 @@
 #include <linux/random.h>
 #include <linux/rtc.h>
 #include <linux/module.h>
-#include <linux/moduleparam.h>
 #include <linux/platform_device.h>
-#include <linux/slab.h>
+#include <linux/proc_fs.h>
 
 #define DEVICE_NAME "FakeRTC"
 #define ACCELERATING_COEFFICIENT 2
 #define SLOWING_COEFFICIENT 2
 #define NANOSECONDS_IN_SECOND 1000000000
-
-#define PREFERABLE_MAJOR 0
 
 static enum {
     REAL,
@@ -22,22 +19,19 @@ static enum {
     SLOWED
 } mode = REAL;
 
-int major = PREFERABLE_MAJOR;
-int minor = 1;
-module_param(minor, int, S_IRUGO);
-
-static int device_open = 0;
-
 static struct fake_rtc_info {
     struct rtc_device *rtc_dev;
 	struct platform_device *pdev;
+    struct proc_dir_entry *proc_entry;
 } fake_rtc;
 
 static ktime_t synchronized_real_time;
 static ktime_t synchronized_boot_time;
+static int device_proc_open = 0;
 
-static void synchronize_boot_time(void);
-static void synchronize_real_time(void);
+#define PROC_MSG_LEN 1024
+static char proc_msg[PROC_MSG_LEN] = {0};
+static char* proc_msg_ptr = proc_msg;
 
 static void synchronize_boot_time(void) {
     synchronized_boot_time = ktime_get();
@@ -117,11 +111,73 @@ static const struct rtc_class_ops fake_rtc_operations = {
 
 void fake_rtc_cleanup(void) {
     platform_device_del(fake_rtc.pdev);
+    proc_remove(fake_rtc.proc_entry);
 }
+
+static int fake_rtc_proc_open(struct inode * inode, struct file * file) {
+    if (device_proc_open) {
+        return -EBUSY;
+    }
+    device_proc_open++;
+    sprintf(proc_msg, "Operating modes of this device:\n\
+    \t0 - Real time\n\
+    \t1 - Random time\n\
+    \t2 - Accelerated time\n\
+    \t3 - Slowed time\n\
+    Current operating mode: %d\n\
+    Write mode number to this file to change operating mode\n", mode);
+    proc_msg_ptr = proc_msg;
+    try_module_get(THIS_MODULE);
+    return 0;
+}
+
+static int fake_rtc_proc_release(struct inode * inode, struct file * file) {
+    device_proc_open--;
+    module_put(THIS_MODULE);
+    return 0;
+}
+
+static ssize_t fake_rtc_proc_read(struct file * filp, char * buffer, size_t length, loff_t * offset) {
+    ssize_t bytes_read = 0;
+    if (offset != NULL) {
+        proc_msg_ptr += *offset;
+    }
+    if (proc_msg_ptr - proc_msg > PROC_MSG_LEN) {
+        return 0;
+    }
+    while (*proc_msg_ptr && length--) {
+        put_user(*(proc_msg_ptr++), buffer++);
+        bytes_read++;
+    }
+    return bytes_read;
+}
+
+static ssize_t fake_rtc_proc_write(struct file *filp, const char *buff, size_t len, loff_t * off) {
+    if (len == 0 || *off > 0) {
+        return len;
+    }
+    static char mode_char;
+    get_user(mode_char, buff);
+    if (mode_char < '0' || mode_char > '3') {
+        return len;
+    }
+    mode = mode_char - '0';
+    return len;
+}
+
+
+static struct file_operations fake_rtc_proc_ops = {
+    .open = fake_rtc_proc_open,
+    .release = fake_rtc_proc_release,
+    .read = fake_rtc_proc_read,
+    .write = fake_rtc_proc_write
+};
 
 int fake_rtc_init(void) {
     fake_rtc.pdev = platform_device_register_simple(DEVICE_NAME, -1, NULL, 0);
-    fake_rtc.rtc_dev = devm_rtc_device_register(&(fake_rtc.pdev->dev), "RTCmegaDevice", &fake_rtc_operations, THIS_MODULE);
+    fake_rtc.rtc_dev = devm_rtc_device_register(&(fake_rtc.pdev->dev), DEVICE_NAME, &fake_rtc_operations, THIS_MODULE);
+
+    fake_rtc.proc_entry = proc_create("FakeRTC", 0666, NULL, &fake_rtc_proc_ops);
 
     synchronize_boot_time();
     synchronize_real_time();
