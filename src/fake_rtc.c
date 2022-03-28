@@ -105,35 +105,15 @@ static int fake_rtc_read_time(struct device * dev, struct rtc_time * tm) {
 }
 
 static int fake_rtc_set_time(struct device * dev, struct rtc_time * tm) {
-    printk(KERN_ALERT "Fake RTC set time accessed\n");
-    printk(KERN_ALERT "Was %lld\n", synchronized_real_time);
     synchronized_real_time = rtc_tm_to_ktime(*tm);
-    printk(KERN_ALERT "Now %lld\n", synchronized_real_time);
     synchronize_boot_time();
     return 0;
 }
 
 static const struct rtc_class_ops fake_rtc_operations = {
-    .open = fake_rtc_open,
-    .release = fake_rtc_release,
     .read_time = fake_rtc_read_time,
     .set_time = fake_rtc_set_time
 };
-
-static int fake_rtc_open(struct device* dev) {
-    if (device_open) {
-        return EBUSY;
-    }
-    device_open++;
-    try_module_get(THIS_MODULE);
-    return 0;
-}
-
-static int fake_rtc_release(struct device* dev) {
-    device_open--;
-    module_put(THIS_MODULE);
-    return 0;
-}
 
 void fake_rtc_cleanup(void) {
     platform_device_del(fake_rtc.pdev);
