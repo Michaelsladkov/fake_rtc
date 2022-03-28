@@ -21,7 +21,7 @@ static enum {
 
 static struct fake_rtc_info {
     struct rtc_device *rtc_dev;
-	struct platform_device *pdev;
+    struct platform_device *pdev;
     struct proc_dir_entry *proc_entry;
 } fake_rtc;
 
@@ -77,7 +77,7 @@ static ktime_t get_randomized_time(unsigned long nanoseconds_difference) {
     int8_t coefficient = random_byte % 10; 
     return (ktime_t) {
             synchronized_real_time + nanoseconds_difference * coefficient
-        };
+    };
 }
 
 static ktime_t get_real_time(unsigned long nanoseconds_difference) {
@@ -119,13 +119,13 @@ static int fake_rtc_proc_open(struct inode * inode, struct file * file) {
         return -EBUSY;
     }
     device_proc_open++;
-    sprintf(proc_msg, "Operating modes of this device:\n\
-    \t0 - Real time\n\
-    \t1 - Random time\n\
-    \t2 - Accelerated time\n\
-    \t3 - Slowed time\n\
-    Current operating mode: %d\n\
-    Write mode number to this file to change operating mode\n", mode);
+    sprintf(proc_msg, "Operating modes of this device:\n"\
+    "\t0 - Real time\n"\
+    "\t1 - Random time\n"\
+    "\t2 - Accelerated time\n"\
+    "\t3 - Slowed time\n"\
+    "Current operating mode: %d\n"\
+    "Write mode number to this file to change operating mode\n", mode);
     proc_msg_ptr = proc_msg;
     try_module_get(THIS_MODULE);
     return 0;
