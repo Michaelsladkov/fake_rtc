@@ -11,6 +11,7 @@
 #define DEVICE_NAME "FakeRTC"
 #define ACCELERATING_COEFFICIENT 2
 #define SLOWING_COEFFICIENT 2
+#define NANOSECONDS_IN_SECOND 1000000000
 
 #define PREFERABLE_MAJOR 0
 
@@ -85,8 +86,8 @@ static ktime_t get_randomized_time(unsigned long nanoseconds_difference) {
         };
 }
 
-static ktime_t get_real_time(unsigned long ignored) {
-    return ktime_get_real();
+static ktime_t get_real_time(unsigned long nanoseconds_difference) {
+    return synchronized_real_time + nanoseconds_difference;
 }
 
 static ktime_t (*fake_rtc_accessors[])(unsigned long) = {
@@ -99,26 +100,27 @@ static ktime_t (*fake_rtc_accessors[])(unsigned long) = {
 static int fake_rtc_read_time(struct device * dev, struct rtc_time * tm) {
     unsigned long nanosec_from_sync = ktime_get() - synchronized_boot_time;
     ktime_t my_time = fake_rtc_accessors[mode](nanosec_from_sync);
-    rtc_time64_to_tm(my_time, tm);
+    rtc_time64_to_tm(my_time / NANOSECONDS_IN_SECOND, tm);
     return 0;
 }
 
 static int fake_rtc_set_time(struct device * dev, struct rtc_time * tm) {
+    printk(KERN_ALERT "Fake RTC set time accessed\n");
+    printk(KERN_ALERT "Was %lld\n", synchronized_real_time);
     synchronized_real_time = rtc_tm_to_ktime(*tm);
+    printk(KERN_ALERT "Now %lld\n", synchronized_real_time);
     synchronize_boot_time();
     return 0;
 }
 
 static const struct rtc_class_ops fake_rtc_operations = {
+    .open = fake_rtc_open,
+    .release = fake_rtc_release,
     .read_time = fake_rtc_read_time,
     .set_time = fake_rtc_set_time
 };
 
-void fake_rtc_cleanup(void) {
-    platform_device_del(fake_rtc.pdev);
-}
-
-static int fake_rtc_open(struct inode * inode, struct file * file) {
+static int fake_rtc_open(struct device* dev) {
     if (device_open) {
         return EBUSY;
     }
@@ -127,41 +129,24 @@ static int fake_rtc_open(struct inode * inode, struct file * file) {
     return 0;
 }
 
-static int fake_rtc_release(struct inode * inode, struct file * file) {
+static int fake_rtc_release(struct device* dev) {
     device_open--;
     module_put(THIS_MODULE);
     return 0;
 }
 
-static struct file_operations fops = {
-    .open = fake_rtc_open,
-    .release = fake_rtc_release
-};
+void fake_rtc_cleanup(void) {
+    platform_device_del(fake_rtc.pdev);
+}
 
 int fake_rtc_init(void) {
-    printk(KERN_CRIT "We are initing, huys\n");
-    dev_t device = 0;
-    int result;
-
-    // major = register_chrdev(PREFERABLE_MAJOR, DEVICE_NAME, &fops);
-    // if (major < 0) {
-        // printk(KERN_WARNING "Fake rtc: can't get major %d\n", major);
-        // return major;
-    // }
-    // printk(KERN_ALERT "FakeRTC major: %d\n", major);
-    fake_rtc.pdev = platform_device_alloc(DEVICE_NAME, 2);
-    printk(KERN_CRIT "We have allocated pdev\n");
+    fake_rtc.pdev = platform_device_register_simple(DEVICE_NAME, -1, NULL, 0);
     fake_rtc.rtc_dev = devm_rtc_device_register(&(fake_rtc.pdev->dev), "RTCmegaDevice", &fake_rtc_operations, THIS_MODULE);
-    printk(KERN_CRIT "We have allocated rtc\n");
-    //fake_rtc.rtc_dev->ops = &fake_rtc_operations;
-    //fake_rtc.rtc_dev->dev = fake_rtc.pdev->dev;
 
     synchronize_boot_time();
     synchronize_real_time();
-    
-    //result = __rtc_register_device(THIS_MODULE, fake_rtc.rtc_dev);
-    //printk(KERN_CRIT "Allocation result: %d\n", result);
-    return result;
+
+    return 0;
 }
 
 module_init(fake_rtc_init);
