@@ -7,11 +7,24 @@
 #include <linux/platform_device.h>
 #include <linux/proc_fs.h>
 
-#define DEVICE_NAME "FakeRTC"
+/**
+ * Feel free to change this contants to change accelerating and slowing behavior
+ * But keep it natural numbers
+ */
 #define ACCELERATING_COEFFICIENT 2
-#define SLOWING_COEFFICIENT 2
-#define NANOSECONDS_IN_SECOND 1000000000
+#define SLOWING_COEFFICIENT 5
 
+#define DEVICE_NAME "FakeRTC"
+#define NANOSECONDS_IN_SECOND 1000000000
+#define PROC_MSG_LEN 1024
+
+/**
+ * @brief Enum of operating modes for this module
+ * Real - for real time, corresponding to system time
+ * Random - for randomized time from last sychronization
+ * Accelerated - time goes faster than real. How much faster - defined by ACCELERATING_COEFFICIENT
+ * Slowed - time goes slower than real. How much slower - defined by SLOWING_COEFFICIENT
+ */
 static enum {
     REAL,
     RANDOM,
@@ -29,7 +42,6 @@ static ktime_t synchronized_real_time;
 static ktime_t synchronized_boot_time;
 static int device_proc_open = 0;
 
-#define PROC_MSG_LEN 1024
 static char proc_msg[PROC_MSG_LEN] = {0};
 static char* proc_msg_ptr = proc_msg;
 
@@ -60,8 +72,15 @@ static ktime_t get_accelerated_time(unsigned long nanoseconds_difference) {
  * @return time_t - time from January 1st 1970 in slowed mode 
  */
 static ktime_t get_slowed_time(unsigned long nanoseconds_difference) {
+    /* We need this counter because of the way hwclopck util works.
+     * It won't return any result until seconds on clock will change.
+     * To make it work we will add a second dor odd call and we won't for even call.
+     * So without this counter hwclock will throw a timeout error
+    */
+    static int call_counter; 
+    call_counter++;
     return (ktime_t) {
-        synchronized_real_time + nanoseconds_difference / SLOWING_COEFFICIENT
+        synchronized_real_time + nanoseconds_difference / SLOWING_COEFFICIENT + (call_counter % 2) * NANOSECONDS_IN_SECOND
     };
 }
 
@@ -73,8 +92,9 @@ static ktime_t get_slowed_time(unsigned long nanoseconds_difference) {
  */
 static ktime_t get_randomized_time(unsigned long nanoseconds_difference) {
     int8_t random_byte;
+    int8_t coefficient; 
     get_random_bytes(&random_byte, 1);
-    int8_t coefficient = random_byte % 10; 
+    coefficient = random_byte % 10;
     return (ktime_t) {
             synchronized_real_time + nanoseconds_difference * coefficient
     };
@@ -153,10 +173,10 @@ static ssize_t fake_rtc_proc_read(struct file * filp, char * buffer, size_t leng
 }
 
 static ssize_t fake_rtc_proc_write(struct file *filp, const char *buff, size_t len, loff_t * off) {
+    static char mode_char;
     if (len == 0 || *off > 0) {
         return len;
     }
-    static char mode_char;
     get_user(mode_char, buff);
     if (mode_char < '0' || mode_char > '3') {
         return len;
