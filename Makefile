@@ -12,6 +12,8 @@ all: $(SRCDIR) $(BUILDDIR)
 
 clean:
 	rm -r $(BUILDDIR)
+	rm modules.order
+	rm Module.symvers
 
 $(BUILDDIR):
 	mkdir $(BUILDDIR)
