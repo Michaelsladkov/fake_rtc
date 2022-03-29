@@ -63,6 +63,8 @@ sleep 3
 
 echo "Now let's try slowed mode"
 echo "3" > $PROC_ENTRY
+cat $PROC_ENTRY
+echo ""
 sleep 1
 hwclock -f $DEVICE_FILE
 echo "And wait for 5 seconds"
@@ -72,5 +74,5 @@ echo "Our RTC says it was only 1!"
 echo ""
 sleep 3
 
-echo "That all from demo. I wil leave module installed so you can play with it. To remove moule run: "
+echo "That's all from demo. I wil leave module installed so you can play with it. To remove moule run: "
 echo "sudo bash test/cleanup.sh $DEVICE_FILE"

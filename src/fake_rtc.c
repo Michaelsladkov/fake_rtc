@@ -36,21 +36,20 @@ static struct fake_rtc_info {
     struct rtc_device *rtc_dev;
     struct platform_device *pdev;
     struct proc_dir_entry *proc_entry;
+    ktime_t synchronized_real_time;
+    ktime_t synchronized_boot_time;
+    int device_proc_open;
 } fake_rtc;
-
-static ktime_t synchronized_real_time;
-static ktime_t synchronized_boot_time;
-static int device_proc_open = 0;
 
 static char proc_msg[PROC_MSG_LEN] = {0};
 static char* proc_msg_ptr = proc_msg;
 
 static void synchronize_boot_time(void) {
-    synchronized_boot_time = ktime_get();
+    fake_rtc.synchronized_boot_time = ktime_get();
 }
 
 static void synchronize_real_time(void) {
-    synchronized_real_time = ktime_get_real();
+    fake_rtc.synchronized_real_time = ktime_get_real();
 }
 
 /**
@@ -61,7 +60,7 @@ static void synchronize_real_time(void) {
  */
 static ktime_t get_accelerated_time(unsigned long nanoseconds_difference) {
     return (ktime_t) {
-        synchronized_real_time + nanoseconds_difference * ACCELERATING_COEFFICIENT
+        fake_rtc.synchronized_real_time + nanoseconds_difference * ACCELERATING_COEFFICIENT
     };
 }
 
@@ -77,10 +76,10 @@ static ktime_t get_slowed_time(unsigned long nanoseconds_difference) {
      * To make it work we will add a second dor odd call and we won't for even call.
      * So without this counter hwclock will throw a timeout error
     */
-    static int call_counter; 
+    static int call_counter;
     call_counter++;
     return (ktime_t) {
-        synchronized_real_time + nanoseconds_difference / SLOWING_COEFFICIENT + (call_counter % 2) * NANOSECONDS_IN_SECOND
+        fake_rtc.synchronized_real_time + nanoseconds_difference / SLOWING_COEFFICIENT + (call_counter % 2) * NANOSECONDS_IN_SECOND
     };
 }
 
@@ -91,17 +90,19 @@ static ktime_t get_slowed_time(unsigned long nanoseconds_difference) {
  * @return time_t - time from January 1st 1970 in random mode 
  */
 static ktime_t get_randomized_time(unsigned long nanoseconds_difference) {
+    static int call_counter;
     int8_t random_byte;
-    int8_t coefficient; 
+    int8_t coefficient;
+    call_counter++;
     get_random_bytes(&random_byte, 1);
     coefficient = random_byte % 10;
     return (ktime_t) {
-            synchronized_real_time + nanoseconds_difference * coefficient
+            fake_rtc.synchronized_real_time + nanoseconds_difference * coefficient + (call_counter % 2) * NANOSECONDS_IN_SECOND
     };
 }
 
 static ktime_t get_real_time(unsigned long nanoseconds_difference) {
-    return synchronized_real_time + nanoseconds_difference;
+    return fake_rtc.synchronized_real_time + nanoseconds_difference;
 }
 
 static ktime_t (*fake_rtc_accessors[])(unsigned long) = {
@@ -112,14 +113,14 @@ static ktime_t (*fake_rtc_accessors[])(unsigned long) = {
 };
 
 static int fake_rtc_read_time(struct device * dev, struct rtc_time * tm) {
-    unsigned long nanosec_from_sync = ktime_get() - synchronized_boot_time;
+    unsigned long nanosec_from_sync = ktime_get() - fake_rtc.synchronized_boot_time;
     ktime_t my_time = fake_rtc_accessors[mode](nanosec_from_sync);
     rtc_time64_to_tm(my_time / NANOSECONDS_IN_SECOND, tm);
     return 0;
 }
 
 static int fake_rtc_set_time(struct device * dev, struct rtc_time * tm) {
-    synchronized_real_time = rtc_tm_to_ktime(*tm);
+    fake_rtc.synchronized_real_time = rtc_tm_to_ktime(*tm);
     synchronize_boot_time();
     return 0;
 }
@@ -129,16 +130,11 @@ static const struct rtc_class_ops fake_rtc_operations = {
     .set_time = fake_rtc_set_time
 };
 
-void fake_rtc_cleanup(void) {
-    platform_device_del(fake_rtc.pdev);
-    proc_remove(fake_rtc.proc_entry);
-}
-
 static int fake_rtc_proc_open(struct inode * inode, struct file * file) {
-    if (device_proc_open) {
+    if (fake_rtc.device_proc_open) {
         return -EBUSY;
     }
-    device_proc_open++;
+    fake_rtc.device_proc_open++;
     sprintf(proc_msg, "Operating modes of this device:\n"\
     "\t0 - Real time\n"\
     "\t1 - Random time\n"\
@@ -152,7 +148,7 @@ static int fake_rtc_proc_open(struct inode * inode, struct file * file) {
 }
 
 static int fake_rtc_proc_release(struct inode * inode, struct file * file) {
-    device_proc_open--;
+    fake_rtc.device_proc_open--;
     module_put(THIS_MODULE);
     return 0;
 }
@@ -193,11 +189,17 @@ static struct file_operations fake_rtc_proc_ops = {
     .write = fake_rtc_proc_write
 };
 
+void fake_rtc_cleanup(void) {
+    platform_device_del(fake_rtc.pdev);
+    proc_remove(fake_rtc.proc_entry);
+}
+
 int fake_rtc_init(void) {
     fake_rtc.pdev = platform_device_register_simple(DEVICE_NAME, -1, NULL, 0);
     fake_rtc.rtc_dev = devm_rtc_device_register(&(fake_rtc.pdev->dev), DEVICE_NAME, &fake_rtc_operations, THIS_MODULE);
 
     fake_rtc.proc_entry = proc_create("FakeRTC", 0666, NULL, &fake_rtc_proc_ops);
+    fake_rtc.device_proc_open = 0;
 
     synchronize_boot_time();
     synchronize_real_time();
