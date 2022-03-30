@@ -20,6 +20,7 @@
 
 /**
  * @brief Enum of operating modes for this module
+ * 
  * Real - for real time, corresponding to system time
  * Random - for randomized time from last sychronization
  * Accelerated - time goes faster than real. How much faster - defined by ACCELERATING_COEFFICIENT
@@ -32,6 +33,16 @@ static enum {
     SLOWED
 } mode = REAL;
 
+/**
+ * @brief Struct to represent this device
+ * 
+ * @rtc_dev - rtc device registered in kernel
+ * @pdev - registeredd platform device used to register rtc device
+ * @proc_entry - entry to /proc dir corresponding to this module
+ * @synchronized_real_time - time is nanoseconds used as starting point in time measurement. Synchronization takes place in init
+ * @synchronized_boot_time - time in nanoseconds used to calculate time difference between measurement and synchronization which takes place in init and time set
+ * @device_proc_open - used as variable for /proc file state (opened/closed) to forbid parallel access
+ */
 static struct fake_rtc_info {
     struct rtc_device *rtc_dev;
     struct platform_device *pdev;
@@ -41,6 +52,10 @@ static struct fake_rtc_info {
     int device_proc_open;
 } fake_rtc;
 
+/**
+ * @brief Buffer for mesage displayed when /proc file is read
+ * 
+ */
 static char proc_msg[PROC_MSG_LEN] = {0};
 static char* proc_msg_ptr = proc_msg;
 
@@ -105,6 +120,10 @@ static ktime_t get_real_time(unsigned long nanoseconds_difference) {
     return fake_rtc.synchronized_real_time + nanoseconds_difference;
 }
 
+/**
+ * @brief Array of function pointers used to access calculating function corresponding to mode
+ * 
+ */
 static ktime_t (*fake_rtc_accessors[])(unsigned long) = {
     [REAL] = get_real_time,
     [RANDOM] = get_randomized_time,
@@ -112,6 +131,16 @@ static ktime_t (*fake_rtc_accessors[])(unsigned long) = {
     [SLOWED] = get_slowed_time
 };
 
+/**
+ * @brief read time function, part of rtc interface
+ * 
+ * This function calculates nanoseconds spent from last synchronization and use it to get time value based on mode
+ * Because calculating fuction returns nanoseconds from January 1st 1970, this function converts it to rtc_time
+ * 
+ * @param dev 
+ * @param tm 
+ * @return int - status
+ */
 static int fake_rtc_read_time(struct device * dev, struct rtc_time * tm) {
     unsigned long nanosec_from_sync = ktime_get() - fake_rtc.synchronized_boot_time;
     ktime_t my_time = fake_rtc_accessors[mode](nanosec_from_sync);
@@ -119,6 +148,13 @@ static int fake_rtc_read_time(struct device * dev, struct rtc_time * tm) {
     return 0;
 }
 
+/**
+ * @brief set time function, part of rtc interface
+ * 
+ * @param dev 
+ * @param tm 
+ * @return int - status
+ */
 static int fake_rtc_set_time(struct device * dev, struct rtc_time * tm) {
     fake_rtc.synchronized_real_time = rtc_tm_to_ktime(*tm);
     synchronize_boot_time();
@@ -130,6 +166,15 @@ static const struct rtc_class_ops fake_rtc_operations = {
     .set_time = fake_rtc_set_time
 };
 
+/**
+ * @brief open function for /proc interface
+ * 
+ * This function checks if someone has already opened device and if not it prepares message for user and occupies device
+ * 
+ * @param inode 
+ * @param file 
+ * @return int status
+ */
 static int fake_rtc_proc_open(struct inode * inode, struct file * file) {
     if (fake_rtc.device_proc_open) {
         return -EBUSY;
@@ -168,6 +213,18 @@ static ssize_t fake_rtc_proc_read(struct file * filp, char * buffer, size_t leng
     return bytes_read;
 }
 
+/**
+ * @brief write function for /proc interface
+ * 
+ * It consumes 1 char from user input. It should be a digit from 0 to 3 to change mode
+ * Otherways this function does nothing
+ * 
+ * @param filp 
+ * @param buff 
+ * @param len 
+ * @param off 
+ * @return ssize_t 
+ */
 static ssize_t fake_rtc_proc_write(struct file *filp, const char *buff, size_t len, loff_t * off) {
     static char mode_char;
     if (len == 0 || *off > 0) {
@@ -189,11 +246,24 @@ static struct file_operations fake_rtc_proc_ops = {
     .write = fake_rtc_proc_write
 };
 
+/**
+ * @brief cleanup routine
+ * 
+ * On module detach we need to free all allocated resources and /proc entry 
+ */
 void fake_rtc_cleanup(void) {
     platform_device_del(fake_rtc.pdev);
     proc_remove(fake_rtc.proc_entry);
 }
 
+/**
+ * @brief initialisation routine
+ * 
+ * Platform device and rtc device are being registered here. 
+ * Also this function creates /proc entry and synchronizes time
+ * 
+ * @return int - status
+ */
 int fake_rtc_init(void) {
     fake_rtc.pdev = platform_device_register_simple(DEVICE_NAME, -1, NULL, 0);
     fake_rtc.rtc_dev = devm_rtc_device_register(&(fake_rtc.pdev->dev), DEVICE_NAME, &fake_rtc_operations, THIS_MODULE);
