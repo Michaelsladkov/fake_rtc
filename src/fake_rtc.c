@@ -49,7 +49,9 @@ static struct fake_rtc_info {
     struct proc_dir_entry *proc_entry;
     ktime_t synchronized_real_time;
     ktime_t synchronized_boot_time;
-    int device_proc_open;
+    int8_t device_proc_open;
+    uint64_t read_counter;
+    uint64_t set_counter;
 } fake_rtc;
 
 /**
@@ -145,6 +147,7 @@ static int fake_rtc_read_time(struct device * dev, struct rtc_time * tm) {
     unsigned long nanosec_from_sync = ktime_get() - fake_rtc.synchronized_boot_time;
     ktime_t my_time = fake_rtc_accessors[mode](nanosec_from_sync);
     rtc_time64_to_tm(my_time / NANOSECONDS_IN_SECOND, tm);
+    fake_rtc.read_counter++;
     return 0;
 }
 
@@ -158,6 +161,7 @@ static int fake_rtc_read_time(struct device * dev, struct rtc_time * tm) {
 static int fake_rtc_set_time(struct device * dev, struct rtc_time * tm) {
     fake_rtc.synchronized_real_time = rtc_tm_to_ktime(*tm);
     synchronize_boot_time();
+    fake_rtc.set_counter++;
     return 0;
 }
 
@@ -180,13 +184,15 @@ static int fake_rtc_proc_open(struct inode * inode, struct file * file) {
         return -EBUSY;
     }
     fake_rtc.device_proc_open++;
-    sprintf(proc_msg, "Operating modes of this device:\n"\
+    sprintf(proc_msg, "Time has been set %llu times and read %llu times\n"\
+    "Operating modes of this device:\n"\
     "\t0 - Real time\n"\
     "\t1 - Random time\n"\
     "\t2 - Accelerated time\n"\
     "\t3 - Slowed time\n"\
     "Current operating mode: %d\n"\
-    "Write mode number to this file to change operating mode\n", mode);
+    "Write mode number to this file to change operating mode\n",\
+        fake_rtc.set_counter, fake_rtc.read_counter, mode);
     proc_msg_ptr = proc_msg;
     try_module_get(THIS_MODULE);
     return 0;
@@ -277,6 +283,9 @@ int fake_rtc_init(void) {
         dev_err(associated_device, "Proc entry creation failed");
     }
     fake_rtc.device_proc_open = 0;
+
+    fake_rtc.read_counter = 0;
+    fake_rtc.set_counter = 0;
 
     synchronize_boot_time();
     synchronize_real_time();
