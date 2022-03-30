@@ -228,10 +228,12 @@ static ssize_t fake_rtc_proc_read(struct file * filp, char * buffer, size_t leng
 static ssize_t fake_rtc_proc_write(struct file *filp, const char *buff, size_t len, loff_t * off) {
     static char mode_char;
     if (len == 0 || *off > 0) {
+        dev_warn(&(fake_rtc.pdev->dev), "This module expects just one digit without offset in proc inputs");
         return len;
     }
     get_user(mode_char, buff);
     if (mode_char < '0' || mode_char > '3') {
+        dev_warn(&(fake_rtc.pdev->dev), "This module expects first character of proc input to be digit from 0 to 3");
         return len;
     }
     mode = mode_char - '0';
@@ -265,10 +267,15 @@ void fake_rtc_cleanup(void) {
  * @return int - status
  */
 int fake_rtc_init(void) {
+    struct device* associated_device;
     fake_rtc.pdev = platform_device_register_simple(DEVICE_NAME, -1, NULL, 0);
-    fake_rtc.rtc_dev = devm_rtc_device_register(&(fake_rtc.pdev->dev), DEVICE_NAME, &fake_rtc_operations, THIS_MODULE);
+    associated_device = &(fake_rtc.pdev->dev);
+    fake_rtc.rtc_dev = devm_rtc_device_register(associated_device, DEVICE_NAME, &fake_rtc_operations, THIS_MODULE);
 
     fake_rtc.proc_entry = proc_create("FakeRTC", 0666, NULL, &fake_rtc_proc_ops);
+    if (fake_rtc.proc_entry == NULL) {
+        dev_err(associated_device, "Proc entry creation failed");
+    }
     fake_rtc.device_proc_open = 0;
 
     synchronize_boot_time();
